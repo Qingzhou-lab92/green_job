@@ -53,7 +53,9 @@ export function demoState(): State {
     followUp: date,
     interviewAt: i === 3 ? date + "T15:00" : "",
     notes: "这是虚构演示记录，可编辑或清空。",
-    status: (["待投递", "已投递", "笔试", "面试", "Offer", "结束"] as const)[i],
+    status: (["待投递", "已投递", "已投递", "面试", "Offer", "结束"] as const)[
+      i
+    ],
   }));
   s.tasks = [
     { id: uid(), text: "为校园项目补充真实的成果证据", done: false },

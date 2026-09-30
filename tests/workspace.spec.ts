@@ -30,7 +30,7 @@ test("本地完整流程、备份恢复、无 Key 模拟与数据清空", async 
   await expect(
     page.getByRole("heading", { name: "前端开发", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "简历定制", exact: true }).click();
+  await page.getByRole("button", { name: "简历精修", exact: true }).click();
   await page.getByRole("button", { name: "生成本地建议版" }).click();
 
   await expect(page.getByLabel("建议改写版")).not.toHaveValue("");
@@ -92,7 +92,7 @@ test("手机七页及设置页无文档横向溢出", async ({ page }) => {
     "认识我",
     "岗位分析",
     "JD 拆解器",
-    "简历定制",
+    "简历精修",
     "投递看板",
     "面试陪练",
     "设置与数据",
@@ -129,21 +129,17 @@ test("拖拽、取消导入和 AI 响应只作为文本显示", async ({ page })
   await page.getByRole("button", { name: "投递看板", exact: true }).click();
   const card = page.locator(".job-card").filter({ hasText: "青禾科技" });
   await card.dragTo(
-    page
-      .locator(".kanban-column")
-      .filter({
-        has: page.getByRole("heading", { name: "已投递", exact: true }),
-      }),
+    page.locator(".kanban-column").filter({
+      has: page.getByRole("heading", { name: "已投递", exact: true }),
+    }),
   );
   await expect(page.getByLabel("青禾科技（演示）状态")).toHaveValue("已投递");
   await page.getByRole("button", { name: "设置与数据", exact: true }).click();
-  await page
-    .locator('input[accept=".json,.csv"]')
-    .setInputFiles({
-      name: "sample.csv",
-      mimeType: "text/csv",
-      buffer: Buffer.from("company,role\n仅预览公司,设计师"),
-    });
+  await page.locator('input[accept=".json,.csv"]').setInputFiles({
+    name: "sample.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("company,role\n仅预览公司,设计师"),
+  });
   await expect(page.getByRole("dialog")).toContainText("1 条投递");
   await page.getByRole("button", { name: "关闭", exact: true }).click();
   await page
@@ -181,5 +177,96 @@ test("拖拽、取消导入和 AI 响应只作为文本显示", async ({ page })
   expect(await page.evaluate(() => "compromised" in window)).toBe(false);
   await page.getByRole("button", { name: "投递看板", exact: true }).click();
   await expect(page.locator(".job-card")).toHaveCount(6);
+  expect(errors).toEqual([]);
+});
+
+test("本地优化：导航、提取提示、五列看板与 Excel 最高岗位", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: "体验演示", exact: true }).click();
+  await expect(page.locator("nav button")).toHaveText([
+    "概览",
+    "认识我",
+    "JD 拆解器",
+    "岗位分析",
+    "简历精修",
+    "投递看板",
+    "面试陪练",
+  ]);
+  await expect(page.getByRole("heading", { name: "待办清单" })).toHaveCount(0);
+  await expect(page.locator(".stat-1 .stat-value")).toContainText("01");
+  await expect(page.locator(".stat-2 .stat-value")).toContainText("01");
+  await page.getByRole("button", { name: "投递看板", exact: true }).click();
+  await expect(page.locator(".kanban-column")).toHaveCount(5);
+  await expect(
+    page.getByRole("heading", { name: "笔试", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator(".job-card")).toHaveCount(6);
+  await page.getByRole("button", { name: "JD 拆解器", exact: true }).click();
+  await page.getByRole("button", { name: "新增 JD", exact: true }).click();
+  await page
+    .getByLabel("JD 原文")
+    .fill(
+      "## 职位名称\n业务分析师\n**公司名称：** 格式测试公司\n【工作地点】杭州\n任职要求：熟悉 SQL",
+    );
+  await page.getByRole("button", { name: "从原文提取基础字段" }).click();
+  await expect(page.getByLabel("岗位名称")).toHaveValue("业务分析师");
+  await expect(page.getByLabel("公司", { exact: true })).toHaveValue(
+    "格式测试公司",
+  );
+  await expect(page.getByLabel("地点", { exact: true })).toHaveValue("杭州");
+  await expect(page.getByRole("dialog")).toContainText("已提取 3 / 3");
+  await page.getByLabel("JD 原文").fill("负责数据分析与报告制作。");
+  await page.getByRole("button", { name: "从原文提取基础字段" }).click();
+  await expect(page.getByRole("dialog")).toContainText("未识别到基础字段");
+  await expect(page.getByLabel("公司", { exact: true })).toHaveValue(
+    "格式测试公司",
+  );
+  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "岗位分析", exact: true }).click();
+  await page.getByLabel("导入岗位表").setInputFiles("tests/fixtures/jobs.xlsx");
+  await expect(page.getByRole("dialog")).toContainText("待新增 2 条");
+  await page
+    .getByLabel("工作表", { exact: true })
+    .selectOption({ label: "More" });
+  await expect(page.getByRole("dialog")).toContainText("Designer");
+  await expect(page.getByRole("dialog")).toContainText("待新增 1 条");
+  await page
+    .getByLabel("工作表", { exact: true })
+    .selectOption({ label: "Jobs" });
+  await page.getByRole("button", { name: "确认导入 2 个岗位" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("ranked-job")).toHaveCount(3);
+  await expect(page.getByTestId("ranked-job").first()).toContainText(
+    "Data Analyst",
+  );
+  await expect(page.locator(".best-job")).toContainText("Data Analyst");
+  await page.getByRole("button", { name: "查看这份 JD 的拆解" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Data Analyst", exact: true }),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "岗位分析", exact: true }).click();
+  await expect(page.getByTestId("ranked-job")).toHaveCount(3);
+  await page.getByLabel("导入岗位表").setInputFiles("tests/fixtures/jobs.xlsx");
+  await expect(page.getByRole("dialog")).toContainText("2 条重复");
+  await expect(
+    page.getByRole("button", { name: "确认导入 0 个岗位" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth + 1,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/ranking-mobile.png",
+    fullPage: true,
+    animations: "disabled",
+  });
   expect(errors).toEqual([]);
 });

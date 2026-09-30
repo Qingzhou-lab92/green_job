@@ -1,12 +1,6 @@
 import { z } from "zod";
-export const statuses = [
-  "待投递",
-  "已投递",
-  "笔试",
-  "面试",
-  "Offer",
-  "结束",
-] as const;
+import { jobProfileSchema } from "./jd-schema";
+export const statuses = ["待投递", "已投递", "面试", "Offer", "结束"] as const;
 const text = z.string().max(200000);
 const id = z.string().min(1).max(200);
 export const evidenceSchema = z.object({
@@ -26,10 +20,23 @@ export const profileSchema = z.object({
   goals: text,
   original: text,
   evidence: z.array(evidenceSchema).max(1000),
-  originals: z.array(z.object({ id, createdAt: text, text })).max(1000),
+  originals: z
+    .array(
+      z.object({
+        id,
+        createdAt: text,
+        text,
+        filename: text.optional(),
+        format: text.optional(),
+      }),
+    )
+    .max(1000),
 });
 export const jdSchema = z.object({
   id,
+  source: text.optional(),
+  structured: jobProfileSchema.optional(),
+  reviewNotes: z.array(text).optional(),
   title: text,
   company: text,
   city: text,
@@ -43,20 +50,43 @@ export const versionSchema = z.object({
   content: text,
   createdAt: text,
 });
-export const applicationSchema = z.object({
-  id,
-  company: text,
-  role: text,
-  city: text,
-  source: text,
-  date: text,
-  jdId: text,
-  resumeId: text,
-  followUp: text,
-  interviewAt: text,
-  notes: text,
-  status: z.enum(statuses),
-});
+export const applicationSchema = z.preprocess(
+  (value) => {
+    if (
+      value &&
+      typeof value === "object" &&
+      "status" in value &&
+      value.status === "笔试"
+    ) {
+      const old = value as Record<string, unknown>;
+      return {
+        ...old,
+        status: "已投递",
+        notes: [
+          typeof old.notes === "string" ? old.notes : "",
+          "原状态：笔试（已合并至已投递）",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+    }
+    return value;
+  },
+  z.object({
+    id,
+    company: text,
+    role: text,
+    city: text,
+    source: text,
+    date: text,
+    jdId: text,
+    resumeId: text,
+    followUp: text,
+    interviewAt: text,
+    notes: text,
+    status: z.enum(statuses),
+  }),
+);
 export const questionSchema = z.object({
   id,
   category: text,

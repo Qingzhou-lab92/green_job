@@ -4,19 +4,23 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc -b && vite build",
+    "dev": "node scripts/prepare-pdf.mjs && vite --host 127.0.0.1",
+    "build": "node scripts/prepare-pdf.mjs && tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run src",
     "test:e2e": "playwright test",
-    "format": "prettier --write src tests *.ts *.json *.md"
+    "format": "prettier --write src tests *.ts *.json *.md",
+    "postinstall": "node scripts/prepare-pdf.mjs"
   },
   "dependencies": {
     "idb": "^8.0.2",
     "lucide-react": "^0.468.0",
+    "mammoth": "^1.13.0",
     "papaparse": "^5.5.2",
+    "pdfjs-dist": "5.4.624",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "read-excel-file": "9.3.10",
     "zod": "^3.24.2"
   },
   "devDependencies": {

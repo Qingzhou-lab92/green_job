@@ -10,6 +10,7 @@ import {
   type JD,
 } from "./model";
 export { catalog };
+import { structureJD } from "./jd-structure";
 // English skills must be whole tokens: JavaScript is not evidence of Java.
 function occurrences(text: string, skill: string) {
   const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -58,25 +59,37 @@ export function parseResume(raw: string): Partial<Profile> {
   };
 }
 export function analyzeJD(jd: JD, profile: Profile) {
-  const lines = jd.raw
-    .split(/[\n；;]/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  const pick = (keys: string[]) =>
-    lines.filter((x) => keys.some((k) => x.includes(k)));
-  const keywords = catalog.skills
-    .filter((s) => occurrences(jd.raw, s) > 0)
-    .map((word) => ({
-      word,
-      count: occurrences(jd.raw, word),
-    }))
-    .sort((a, b) => b.count - a.count);
+  const structured = structureJD(jd).profile;
+  const responsibilities = [
+    ...structured.responsibilities.primary,
+    ...structured.responsibilities.secondary,
+  ].map((x) => x.action);
+  const hard = [
+    ...(structured.hard_gate.education_min
+      ? [`学历要求：${structured.hard_gate.education_min}`]
+      : []),
+    ...structured.hard_gate.required_certifications.map(
+      (x) =>
+        `必须具备证书：${x.names.join(x.operator === "any_of" ? " 或 " : " 且 ")}`,
+    ),
+  ];
+  const preferred = structured.employer_preferred;
   const requirements = [
     ...new Set([
-      ...pick(catalog.rules.requirements),
-      ...pick(catalog.rules.hard),
+      ...preferred.major_background,
+      ...preferred.skills_tools,
+      ...preferred.experience_background,
+      ...preferred.other_qualifications,
+      ...hard,
     ]),
   ];
+  const bonus = preferred.preferred_certifications;
+  const text =
+    [...responsibilities, ...requirements, ...bonus].join("\n") || jd.raw;
+  const keywords = catalog.skills
+    .filter((s) => occurrences(text, s) > 0)
+    .map((word) => ({ word, count: occurrences(text, word) }))
+    .sort((a, b) => b.count - a.count);
   const facts = [
     profile.original,
     profile.experience,
@@ -106,28 +119,24 @@ export function analyzeJD(jd: JD, profile: Profile) {
       )
     : 0;
   return {
-    responsibilities: pick(catalog.rules.responsibilities),
+    responsibilities,
     requirements,
-    hard: pick(catalog.rules.hard),
-    bonus: pick(catalog.rules.bonus),
+    hard,
+    bonus,
     matches,
     requirementMatches: [
-      ...new Set([
-        ...requirements,
-        ...pick(catalog.rules.responsibilities),
-        ...pick(catalog.rules.bonus),
-      ]),
+      ...new Set([...requirements, ...responsibilities, ...bonus]),
     ].map((text) => {
       const relevant = matches.filter((m) =>
         text.toLowerCase().includes(m.word.toLowerCase()),
       );
-      const hard = catalog.rules.hard.some((k) => text.includes(k));
+      const isHard = hard.includes(text) || /学历|年限|\d+年|证书/.test(text);
       const hits = relevant.filter((m) => m.status === "命中");
       const partial = relevant.some((m) => m.status !== "缺口");
       return {
         text,
         status:
-          !hard && relevant.length && hits.length === relevant.length
+          !isHard && relevant.length && hits.length === relevant.length
             ? "命中"
             : partial
               ? "部分命中"
@@ -142,7 +151,7 @@ export function analyzeJD(jd: JD, profile: Profile) {
                 .map((m) => m.word)
                 .join("、")}`
             : "",
-          hard
+          isHard
             ? "学历、年限等硬性条件必须人工核实，不能仅凭关键词认定满足"
             : !relevant.length
               ? "词库未覆盖此项，请人工提供相关经历与证明材料"
