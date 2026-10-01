@@ -1,6 +1,8 @@
 import { emptyState, uid, today, type State } from "./model";
+import { emptyWorkflow } from "./workflow-model";
 export function demoState(): State {
   const s = emptyState();
+  s.workflow = { ...emptyWorkflow(), mode: "demo" };
   const date = today();
   s.profile = {
     name: "林晓（演示）",

@@ -1,5 +1,6 @@
 import { openDB } from "idb";
 import { emptyState, stateSchema, type State } from "./model";
+import { reconcileWorkflow } from "./workflow";
 const db = () =>
   openDB("career-desk", 1, {
     upgrade(database) {
@@ -9,11 +10,15 @@ const db = () =>
 export async function readState(): Promise<State> {
   const d = await db();
   const value = await d.get("workspace", "state");
-  return value ? stateSchema.parse(value) : emptyState();
+  return value ? reconcileWorkflow(stateSchema.parse(value)) : emptyState();
 }
 export async function writeState(state: State) {
   const d = await db();
-  await d.put("workspace", stateSchema.parse(state), "state");
+  await d.put(
+    "workspace",
+    reconcileWorkflow(stateSchema.parse(state)),
+    "state",
+  );
 }
 export async function clearState() {
   const d = await db();

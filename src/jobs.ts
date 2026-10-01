@@ -142,6 +142,16 @@ export function parseJobRows(rows: unknown[][], source: string) {
   const headerIndex = rows.findIndex((row) => row.some((c) => valueText(c)));
   if (headerIndex < 0) throw new Error("表格为空，请先填写岗位数据。");
   const header = rows[headerIndex].map(headerKey);
+  const categoryColumn = header.findIndex((h) =>
+    ["matchcategory", "databasematchcategory", "原库分类"].includes(h),
+  );
+  const databaseCategory = (row: unknown[]) => {
+    const category =
+      categoryColumn >= 0 ? valueText(row[categoryColumn]).toLowerCase() : "";
+    return category === "direct" || category === "general"
+      ? category
+      : undefined;
+  };
   const profileColumn = header.indexOf("jobprofilejson");
   if (profileColumn >= 0) {
     const jobs: JD[] = [],
@@ -163,6 +173,7 @@ export function parseJobRows(rows: unknown[][], source: string) {
           company: p.job_facts.company || "",
           city: p.job_facts.location.join("、"),
           structured: p,
+          database_match_category: databaseCategory(row),
           raw:
             rawColumn >= 0
               ? valueText(row[rawColumn])
@@ -232,6 +243,7 @@ export function parseJobRows(rows: unknown[][], source: string) {
     }
     jobs.push({
       id: uid(),
+      database_match_category: databaseCategory(row),
       title,
       company,
       city,

@@ -36,7 +36,20 @@ import {
   emptyState,
   uid,
   today,
+  stateSchema,
 } from "./model";
+import {
+  CandidatePage,
+  JDWorkflowPage,
+  RoleWorkflowPage,
+  ResumeWorkflowPage,
+} from "./WorkflowPages";
+import { reconcileWorkflow } from "./workflow";
+import {
+  getApplicationTimeLabels,
+  detectScheduleConflicts,
+  upcomingSchedule,
+} from "./schedule";
 import { readState, writeState, clearState, download } from "./storage";
 import { demoState } from "./demo";
 import {
@@ -98,8 +111,8 @@ const pages = [
   },
   { name: "设置与数据", icon: Settings, sub: "数据由你掌握，AI 由你选择。" },
 ];
-type Update = (fn: (s: State) => State) => Promise<void>;
-function Button({
+export type Update = (fn: (s: State) => State) => Promise<void>;
+export function Button({
   children,
   onClick,
   variant = "",
@@ -123,7 +136,13 @@ function Button({
     </button>
   );
 }
-function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <label className="field">
       <span>{label}</span>
@@ -131,7 +150,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
     </label>
   );
 }
-function Empty({ title, children }: { title: string; children?: ReactNode }) {
+export function Empty({
+  title,
+  children,
+}: {
+  title: string;
+  children?: ReactNode;
+}) {
   return (
     <div className="empty">
       <FileText size={30} />
@@ -140,10 +165,16 @@ function Empty({ title, children }: { title: string; children?: ReactNode }) {
     </div>
   );
 }
-function Tag({ children, tone = "" }: { children: ReactNode; tone?: string }) {
+export function Tag({
+  children,
+  tone = "",
+}: {
+  children: ReactNode;
+  tone?: string;
+}) {
   return <span className={"tag " + tone}>{children}</span>;
 }
-function Panel({
+export function Panel({
   title,
   children,
   action,
@@ -162,7 +193,7 @@ function Panel({
     </section>
   );
 }
-function Modal({
+export function Modal({
   title,
   children,
   onClose,
@@ -227,7 +258,7 @@ export default function App() {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [page, setPage] = useState(0),
-    [activeJd, setActiveJd] = useState(""),
+    [activeJd] = useState(""),
     [mobile, setMobile] = useState(false),
     [saving, setSaving] = useState(false);
   const current = useRef<State>(emptyState()),
@@ -247,7 +278,7 @@ export default function App() {
   const update: Update = (fn) => {
     setSaving(true);
     const op = queue.current.then(async () => {
-      const next = fn(current.current);
+      const next = reconcileWorkflow(stateSchema.parse(fn(current.current)));
       await writeState(next);
       current.current = next;
       setState(next);
@@ -414,38 +445,31 @@ export default function App() {
                 <Overview state={state} update={update} go={go} run={run} />
               )}
               {page === 1 && (
-                <ProfilePage state={state} update={update} run={run} />
+                <CandidatePage state={state} update={update} run={run} />
               )}
               {page === 3 && (
-                <RankedRoles
+                <RoleWorkflowPage
                   state={state}
                   update={update}
                   run={run}
-                  onOpen={(id) => {
-                    setActiveJd(id);
-                    go(2);
-                  }}
                   go={go}
                 />
               )}
               {page === 2 && (
-                <JDPage
+                <JDWorkflowPage
                   state={state}
                   update={update}
                   run={run}
                   initialId={activeJd}
-                  onRefine={(id) => {
-                    setActiveJd(id);
-                    go(4);
-                  }}
+                  go={go}
                 />
               )}
               {page === 4 && (
-                <Resumes
+                <ResumeWorkflowPage
                   state={state}
                   update={update}
                   run={run}
-                  initialId={activeJd}
+                  go={go}
                 />
               )}
               {page === 5 && <Board state={state} update={update} run={run} />}
@@ -483,7 +507,7 @@ export default function App() {
     </div>
   );
 }
-type Props = {
+export type Props = {
   state: State;
   update: Update;
   run: (fn: () => Promise<unknown>, message?: string) => Promise<void>;
@@ -727,7 +751,7 @@ function Overview({
     </div>
   );
 }
-function ProfilePage({ state, update, run }: Props) {
+export function LegacyProfilePage({ state, update, run }: Props) {
   const [draft, setDraft] = useState<Profile>(state.profile),
     [raw, setRaw] = useState(state.profile.original),
     [skill, setSkill] = useState(""),
@@ -1224,7 +1248,7 @@ function AIAction({
     </div>
   );
 }
-function JDPage({
+export function LegacyJDPage({
   state,
   update,
   run,
@@ -1650,7 +1674,7 @@ function JDPage({
     </div>
   );
 }
-function Resumes({
+export function LegacyResumes({
   state,
   update,
   run,
@@ -1938,6 +1962,8 @@ function Resumes({
   );
 }
 function Board({ state, update, run }: Props) {
+  const conflicts = detectScheduleConflicts(state.applications);
+  const schedule = upcomingSchedule(state.applications);
   const [search, setSearch] = useState(""),
     [filter, setFilter] = useState(""),
     [editing, setEditing] = useState<Application | null>(null),
@@ -2008,6 +2034,32 @@ function Board({ state, update, run }: Props) {
       <div className="notice">
         拖动卡片即可流转；手机或键盘操作可使用卡片底部的状态菜单。
       </div>
+      <Panel title="近期安排 · 未来 7 天">
+        {schedule.length ? (
+          schedule.map((event, i) => (
+            <div
+              className="history-row"
+              key={event.application.id + event.type + i}
+            >
+              <Tag>{event.type === "interview" ? "面试" : "跟进"}</Tag>
+              <span>
+                {event.at.replace("T00:00", "").replace("T", " ")} ·{" "}
+                {event.application.company} · {event.application.role}
+              </span>
+            </div>
+          ))
+        ) : (
+          <p>未来 7 天暂无安排。</p>
+        )}
+        {conflicts.map((conflict, i) => (
+          <p className="notice" key={i}>
+            {conflict.message} ·{" "}
+            {conflict.ids
+              .map((id) => state.applications.find((a) => a.id === id)?.company)
+              .join(" / ")}
+          </p>
+        ))}
+      </Panel>
       <div className="kanban">
         {statuses
           .filter((s) => !filter || s === filter)
@@ -2060,12 +2112,32 @@ function Board({ state, update, run }: Props) {
                           {a.jdId && <Tag>关联 JD</Tag>}
                           {a.resumeId && <Tag>定制简历</Tag>}
                         </div>
-                        {a.followUp && (
-                          <small className={a.followUp <= today() ? "due" : ""}>
+                        <div className="tags">
+                          {getApplicationTimeLabels(a).labels.map((label) => (
+                            <Tag key={label}>{label}</Tag>
+                          ))}
+                        </div>
+                        {getApplicationTimeLabels(a).next && (
+                          <small>
                             <CalendarDays size={13} />
-                            {a.followUp} 跟进
+                            下一节点：
+                            {getApplicationTimeLabels(a)
+                              .next!.at.replace("T00:00", "")
+                              .replace("T", " ")}{" "}
+                            ·{" "}
+                            {getApplicationTimeLabels(a).next!.type ===
+                            "interview"
+                              ? "面试"
+                              : "跟进"}
                           </small>
                         )}
+                        {conflicts
+                          .filter((c) => c.ids.includes(a.id))
+                          .map((c, i) => (
+                            <small className="due" key={i}>
+                              {c.message}
+                            </small>
+                          ))}
                       </button>
                       <select
                         aria-label={`${a.company}状态`}
@@ -2279,8 +2351,8 @@ function Practice({ state, update, run }: Props) {
                           .replace(
                             "{requirement}",
                             jd
-                              ? analyzeJD(jd, state.profile).requirements[0] ||
-                                  jd.title
+                              ? jd.v2?.structured_job.responsibilities
+                                  .primary[0]?.action || jd.title
                               : "核心职责",
                           ),
                         answer: "",
@@ -2595,11 +2667,12 @@ function SettingsPage({
       <div className="two-col">
         <Panel
           title="AI 接口配置"
-          action={<Tag>{config.key ? "自有 Key" : "本地模拟模式"}</Tag>}
+          action={<Tag>{config.key ? "自有 Key" : "待配置 AI"}</Tag>}
         >
           <div className="notice">
             只有主动使用 AI 并确认发送时，相关文本才会直接传给你配置的服务商。无
-            Key 也能使用全部本地功能。
+            Key 时仍可管理本地资料、备份和看板；v2 画像、JD、匹配与改写需配置
+            AI。
           </div>
           <form
             className="form-grid"
@@ -2635,7 +2708,7 @@ function SettingsPage({
                 type={show ? "text" : "password"}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="留空使用本地模拟"
+                placeholder="v2 正式流程需要配置 Key"
                 value={config.key}
                 onChange={(e) => setConfig({ ...config, key: e.target.value })}
               />
@@ -2883,7 +2956,7 @@ function SettingsPage({
     </div>
   );
 }
-function RankedRoles({
+export function LegacyRankedRoles({
   state,
   update,
   run,

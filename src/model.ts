@@ -1,5 +1,14 @@
 import { z } from "zod";
 import { jobProfileSchema } from "./jd-schema";
+import { WorkflowSchema, JobSnapshotSchema } from "./workflow-model";
+export {
+  CandidateProfileSchema,
+  JobProfileSchema,
+  MatchCriterionSchema,
+  JobMatchResultSchema,
+  MatchReportSchema,
+  ResumeAdviceSchema,
+} from "./workflow-model";
 export const statuses = ["待投递", "已投递", "面试", "Offer", "结束"] as const;
 const text = z.string().max(200000);
 const id = z.string().min(1).max(200);
@@ -35,7 +44,9 @@ export const profileSchema = z.object({
 export const jdSchema = z.object({
   id,
   source: text.optional(),
+  database_match_category: z.enum(["direct", "general"]).optional(),
   structured: jobProfileSchema.optional(),
+  v2: JobSnapshotSchema.optional(),
   reviewNotes: z.array(text).optional(),
   title: text,
   company: text,
@@ -49,6 +60,9 @@ export const versionSchema = z.object({
   title: text,
   content: text,
   createdAt: text,
+  report_id: text.optional(),
+  profile_version: text.optional(),
+  job_snapshot_id: text.optional(),
 });
 export const applicationSchema = z.preprocess(
   (value) => {
@@ -105,6 +119,7 @@ export const sessionSchema = z.object({
 });
 export const stateSchema = z.object({
   schemaVersion: z.literal(1),
+  workflow: WorkflowSchema.optional(),
   profile: profileSchema,
   jds: z.array(jdSchema).max(5000),
   versions: z.array(versionSchema).max(5000),
